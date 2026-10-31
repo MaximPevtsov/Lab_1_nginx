@@ -1,17 +1,10 @@
 #!/bin/bash
-#sudo dnf install nginx && nmap -y
-#sudo systemctl enable nginx
-#echo "config text" > /etc/nginx/conf.d/balancer.conf
-
 
 active_nodes_answers=""
 active_nodes_answers=$(sudo nmap -sn 192.168.56.101-254)
 sudo firewall-cmd --permanent --add-port=80/tcp                   #SELinux tcp :80 activated
 sudo firewall-cmd --reload
 mkdir /home/vagrant/Lab_1_nginx/ready_configs/
-#touch /home/vagrant/lab_1/active_nodes_ip
-#sudo chmod u+x /home/vagrant/lab_1/active_nodes_ip
-#> /home/vagrant/lab_1/active_nodes_ip
 for word in $active_nodes_answers
 do
         if [[ $word == 192.* ]]
@@ -19,8 +12,6 @@ do
                  active_nodes_ip="$active_nodes_ip $word"
         fi
 done
-#echo "Скрипт пункт №2 окончен"
-#echo $active_nodes_ip
 bastion_ip=$(hostname -I)
 bastion_check=$(echo $bastion_ip | awk '{print $2}')
 for ip in $active_nodes_ip
@@ -58,13 +49,10 @@ echo "\
 " >> /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf
 sudo  mv /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf /etc/nginx/conf.d/balancer.conf
 sudo restorecon -v /etc/nginx/conf.d/balancer.conf
-#rm /etc/nginx/conf.d/default
-#echo $active_nodes_ip_without_jumpNode
 for ip in $active_nodes_ip_without_jumpNode          #Making ssh public key insert, nginx install, generate HTML page and send it  ---start---
 do
 
 	node_addr="vagrant@$ip"
-	#echo $node_addr"!!!!!!!!!!!!!!!!!!!!!!"
 	sshpass -p "vagrant"\
 	ssh-copy-id -i ~/.ssh/.id_rsa.pub -o\
 	StrictHostKeyChecking=no\
@@ -76,7 +64,6 @@ do
 	ssh $node_addr "sudo systemctl enable nginx"
 	ssh $node_addr "sudo firewall-cmd --permanent --add-port=8080/tcp"		#SELinux setting
 	ssh $node_addr "sudo firewall-cmd --reload"					#SELinux setting
-	#touch ${node_name}_html
 	echo "<!DOCTYPE html>
 		<html>
 		<head>
@@ -116,7 +103,6 @@ do
 	ssh $node_addr "sudo mv /tmp/${node_name}_host.conf /etc/nginx/conf.d/"
 	ssh $node_addr "sudo restorecon -v /etc/nginx/conf.d/${node_name}_host.conf"	#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	ssh $node_addr "sudo chmod a+x /etc/nginx/conf.d/${node_name}_host.conf"
-	#scp ./${node_name}_host.conf $node_addr:/etc/nginx/conf.d/
 	ssh $node_addr "sudo systemctl restart nginx"
 
 done							# ---end---
@@ -135,4 +121,4 @@ do
 	fi
 
 done
-echo "end"
+echo "end of script!"
