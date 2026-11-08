@@ -59,38 +59,46 @@ nodes_ip_without_jumpNode="${nodes_ip_without_jumpNode# }"
 jumpNode_ip="${NODE_IP}"
 jumpNode_name=$(hostname)
 nodes_count=$(echo $nodes_names_without_jumpNode | wc -w)
+printf "С каким портом должен работать бастион?"
+read -r -p "Введите номер порта (число от 0001 до 9999): " jumpNode_port
 
-	#------
-
-#nodes_ip_and_names_without_nodeJump=""
-
-#for element in $ALL_NODES
-#do
-#        if [[ $element != "${NODE_NAME}=${NODE_IP}" ]]
-#        then
-#                nodes_ip_and_names_without_nodeJump="$nodes_ip_and_names_without_nodeJump $element"
-#        fi
-#done
-#nodes_ip_and_names_without_nodeJump="${nodes_ip_and_names_without_nodeJump# }"
-#echo "All nodes NO jumpNode:$nodes_ip_and_names_without_nodeJump"
-
-#for item in $nodes_ip_and_names_without_nodeJump
-#do
-#	current_name="${item%%=*}"
-#	current_ip="${item##*=}"
-#	nodes_names_without_jumpNode="$nodes_names_without_jumpNode $current_name"
-#	nodes_ip_without_jumpNode="$nodes_ip_without_jumpNode $current_ip"
-#done
-
-
+		#------Устанавливаем утилиту "sshpass"
+		#------Если была создана пара ключей ранее, то удаляем их, чтобы не было конфликта с вновь созданными
+		#------Генерим новую пару ключей, тихо кладем ее в стоковый каталог
 
 #sudo dnf install sshpass -y
 #rm -f ~/.ssh/.id_rsa ~/.ssh/.id_rsa.pub
 #ssh-keygen -N "" -f ~/.ssh/.id_rsa -q
 
+		#-----
 
 
+awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \
+'/__ROUND_ROBIN_SERVERS__/ {
+	count = split (string_with_ip, massive_with_ip, " ")
+	for (i=1; i<=count; i++){
+		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"
+				}
+	next
+			  }
 
+/__LEAST_CONN_SERVERS__/ {
+	count = split (string_with_ip, massive_with_ip, " ")
+	for (i=1; i<=count; i++) {
+		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"
+				 }
+	next
+		 }
+
+/__WEIGHT_BALANCE_SERVERS__/ {
+        count = split (string_with_ip, massive_with_ip, " ")
+        for (i=1; i<=count; i++) {
+                print "    server " massive_with_ip[i] ":" port " weight=1 max_fails=2 fail_timeout=30s;"
+                                 }
+        next
+                 }
+{print}
+' balancer_template.conf > balancer_${jumpNode_name}.conf
 #echo "Количество нодов - "$nodes_count
 #echo "upstream lab_1 {" > /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf
 #for ip in $active_nodes_ip_without_jumpNode
