@@ -70,53 +70,41 @@ read -r -p "Введите номер порта (число от 0001 до 9999
 #rm -f ~/.ssh/.id_rsa ~/.ssh/.id_rsa.pub
 #ssh-keygen -N "" -f ~/.ssh/.id_rsa -q
 
-		#-----
+		#------Блок формирвания конфига для бастиона. Делаем это с помощью мощного built-in под названием awk
+		#------Первая строчка запускаем awk. Задаем переменые, которые будут использоваться в теле команды и заполняем их. Делаем это на языке Bash
+		#------Далее идет тело команды awk в кавычках ''
+		#------Все в этих кавычках написано на языке утилиты awk, а не Bash!!!
+		#------
 
 
-awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \
-'/__ROUND_ROBIN_SERVERS__/ {
-	count = split (string_with_ip, massive_with_ip, " ")
-	for (i=1; i<=count; i++){
-		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"
-				}
-	next
-			  }
+awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \				#    awk [flag] [key=value] \
+'/__ROUND_ROBIN_SERVERS__/ {										#    (single quote) /PATTERN/ {
+	count = split (string_with_ip, massive_with_ip, " ")						#	action ...
+	for (i=1; i<=count; i++){									#	next		      }
+		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"	#    {print}
+				}									#    (single quote) file_in > file_out
+	next												#
+			  }										#
 
-/__LEAST_CONN_SERVERS__/ {
-	count = split (string_with_ip, massive_with_ip, " ")
-	for (i=1; i<=count; i++) {
-		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"
-				 }
-	next
-		 }
+/__LEAST_CONN_SERVERS__/ {										# Задаем паттерн __LESAT_CONN_SERVERS__, который АВК будет искать в шаблонном файле
+	count = split (string_with_ip, massive_with_ip, " ")						# Внимание! АВК принимает на вход ТОЛЬКО строку. Тут режем строку со входа по пробелу и суем в массив
+	for (i=1; i<=count; i++) {									# Потому что в нашем цикле нужен массив. Начинаем по шаблону вставлять айпи из массива там, где
+		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"	# утилита находит паттерн и заменяет его на текущий айпи.
+				 }									# Закрываем логику работы при нахождении паттерна
+	next												# Переходим к следующей строке
+		 }											# Или к следующему паттерну и действиям при его обнаружении
 
-/__WEIGHT_BALANCE_SERVERS__/ {
+/__WEIGHT_BALANCE_SERVERS__/ {										# Остальные блоки - аналогично.
         count = split (string_with_ip, massive_with_ip, " ")
         for (i=1; i<=count; i++) {
                 print "    server " massive_with_ip[i] ":" port " weight=1 max_fails=2 fail_timeout=30s;"
                                  }
         next
                  }
-{print}
-' balancer_template.conf > balancer_${jumpNode_name}.conf
-#echo "Количество нодов - "$nodes_count
-#echo "upstream lab_1 {" > /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf
-#for ip in $active_nodes_ip_without_jumpNode
-#do
-#       echo -e "\tserver $ip:8080 max_fails=2 fail_timeout=10s;" >> /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf
-#done
-#echo -e "}\n" >> /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf
-#echo "\
-#       server {
-#               listen     80 default_server;
-#               server_name _;
-#
-#               location / {
-#                       proxy_pass http://lab_1;
-#
-#                          }
-#               }
-#" >> /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf
+{print}													# Если ни один паттерн не подошел, то просто перепечатываем строку не меняя ее.
+' balancer_template.conf > balancer_${jumpNode_name}.conf						# На вход скармливаем шаблон, на выходе файл с обработкой по паттернам.
+
+
 #sudo  mv /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf /etc/nginx/conf.d/balancer.conf
 #sudo restorecon -v /etc/nginx/conf.d/balancer.conf
 #for ip in $active_nodes_ip_without_jumpNode          #Making ssh public key insert, nginx install, generate HTML page and send it  ---start---
