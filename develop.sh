@@ -157,27 +157,29 @@ do
 	ssh $node_addr "sudo systemctl enable nginx" 2> /dev/null
 	ssh $node_addr "sudo firewall-cmd --permanent --add-port=8080/tcp" 2> /dev/null              #SELinux setting
 	ssh $node_addr "sudo firewall-cmd --reload"                                    			 #SELinux setting
-	awk -v jumpNode_ip=$NODE_IP -v port=$jumpNode_port -v current_node_name="${nodes_names_without_jumpNode[count]}" \
+	#echo ${nodes_names_without_jumpNode[count]}     "!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	sleep 2
+	awk -v jumpNode_ip=$NODE_IP -v port=$jumpNode_port -v current_node_name=${nodes_names_massive[count]} \
 	' /__NODE_PORT__/ {
-	print ":" port
+	print "        listen " port ";"
 	next
 			  }
 	/__JUMPNODE_IP__/ {
-	print jumpNode_ip
+	print "        allow " jumpNode_ip ";"
 	next
 			  }
 	/__DEFAULT_HTML_DIR_OF_NODE_NUMBER__/ {
-	print current_node_name "_html"
+	print "        root /var/www/" current_node_name "_html"
 	next
 					 }
 	/__DEFAULT_NODE_HTML_STATIC_FILE__/ {
-	print current_node_name ".html"
+	print "        index main_" current_node_name ".html"
 	next
 					 }
 
 	{print}
 
-	' node_template.conf > node_${current_node_name[i]}.conf
+	' node_template.conf > node_${node_name}.conf
 	count+=1
 	chmod u+x node_${node_name}.conf
 	#scp /home/vagrant/Lab_1_nginx/node_${node_name}.conf $node_addr:/tmp/
