@@ -50,78 +50,143 @@ do
 	printf "  %-12s %-16s %s\n" "$name" "$ip" "$role"
 done
 
-		#------Убираем лишний пробел в начале обоих массивов
-		#------записываем отдельно айпи и имя бастиона
-		#------Определяем количество нод (в будущем возможен код, где будет создаваться 2 и более бастиона)
+		#------ Убираем лишний пробел в начале обоих массивов
+		#------ Записываем отдельно айпи и имя бастиона
+		#------ Определяем количество нод (в будущем возможен код, где будет создаваться 2 и более бастиона)
+		#------ Просим юзера ввести порт для бастиона. Нужно ввести число без нулей впереди от 1 до 65536 (пример: 8, 22, 80, 197, 6549 и тд)
+		#------ Внимание! Убедитесь, что порт свободен и не используется никаким другим процессом до запуска скрипта! Если не хотите/не можете - используйте дефолтный порт ":80"
 
 nodes_names_without_jumpNode="${nodes_names_without_jumpNode# }"
 nodes_ip_without_jumpNode="${nodes_ip_without_jumpNode# }"
 jumpNode_ip="${NODE_IP}"
 jumpNode_name=$(hostname)
 nodes_count=$(echo $nodes_names_without_jumpNode | wc -w)
-printf "С каким портом должен работать бастион?"
+echo "С каким портом должен работать бастион?"
 read -r -p "Введите номер порта (число от 0001 до 9999): " jumpNode_port
+
 
 		#------Устанавливаем утилиту "sshpass"
 		#------Если была создана пара ключей ранее, то удаляем их, чтобы не было конфликта с вновь созданными
 		#------Генерим новую пару ключей, тихо кладем ее в стоковый каталог
 
-#sudo dnf install sshpass -y
-#rm -f ~/.ssh/.id_rsa ~/.ssh/.id_rsa.pub
-#ssh-keygen -N "" -f ~/.ssh/.id_rsa -q
-
+sudo dnf install sshpass -y
+rm -f ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
+ssh-keygen -N "" -f ~/.ssh/id_rsa -q
+sudo dnf install nginx -y 2> /dev/null
 		#------Блок формирвания конфига для бастиона. Делаем это с помощью мощного built-in под названием awk
 		#------Первая строчка запускаем awk. Задаем переменые, которые будут использоваться в теле команды и заполняем их. Делаем это на языке Bash
 		#------Далее идет тело команды awk в кавычках ''
 		#------Все в этих кавычках написано на языке утилиты awk, а не Bash!!!
+		#------Конструкция:
+		#------
+		#------    awk [flag] [key=value] \
+		#------    (single quote) /PATTERN/ {
+		#------       action ...
+		#------       next		    }
+		#------    {print}
+		#------    (single quote) file_in > file_out
 		#------
 
 
-awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \				#    awk [flag] [key=value] \
-'/__ROUND_ROBIN_SERVERS__/ {										#    (single quote) /PATTERN/ {
-	count = split (string_with_ip, massive_with_ip, " ")						#	action ...
-	for (i=1; i<=count; i++){									#	next		      }
-		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"	#    {print}
-				}									#    (single quote) file_in > file_out
-	next												#
-			  }										#
+awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \
+'/__ROUND_ROBIN_SERVERS__/ {
+	count = split (string_with_ip, massive_with_ip, " ")
+	for (i=1; i<=count; i++){
+		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"
+				}
+	next
+			  }
 
-/__LEAST_CONN_SERVERS__/ {										# Задаем паттерн __LESAT_CONN_SERVERS__, который АВК будет искать в шаблонном файле
-	count = split (string_with_ip, massive_with_ip, " ")						# Внимание! АВК принимает на вход ТОЛЬКО строку. Тут режем строку со входа по пробелу и суем в массив
-	for (i=1; i<=count; i++) {									# Потому что в нашем цикле нужен массив. Начинаем по шаблону вставлять айпи из массива там, где
-		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"	# утилита находит паттерн и заменяет его на текущий айпи.
-				 }									# Закрываем логику работы при нахождении паттерна
-	next												# Переходим к следующей строке
-		 }											# Или к следующему паттерну и действиям при его обнаружении
+		#------ В нашем скрипте 3 блока, обьясним принцип работы на примере блока №2 ниже.
+		#------ Задаем паттерн __LESAT_CONN_SERVERS__, который АВК будет искать в шаблонном файле
+		#------ Внимание! АВК принимает на вход ТОЛЬКО строку. Тут режем строку со входа по пробелу и суем в массив,
+		#------ потому что в нашем цикле нужен массив. Начинаем по шаблону вставлять айпи из массива там, где
+		#------ утилита находит паттерн и заменяет его на текущий айпи.
+		#------ Закрываем логику работы при нахождении паттерна.
+		#------ Переходим к следующей строке
+		#------ или к следующему паттерну и действиям при его обнаружении.
+		#------ Если ни один паттерн не подошел, то просто перепечатываем строку не меняя ее.
+		#------ На вход скармливаем файл с шаблоном file_in, на выходе получаем всегда перезаписанный новый файл с обработкой по паттернам file_out.
 
-/__WEIGHT_BALANCE_SERVERS__/ {										# Остальные блоки - аналогично.
+/__LEAST_CONN_SERVERS__/ {
+	count = split (string_with_ip, massive_with_ip, " ")
+	for (i=1; i<=count; i++) {
+		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"
+				 }
+	next
+		 }
+
+/__WEIGHT_BALANCE_SERVERS__/ {
         count = split (string_with_ip, massive_with_ip, " ")
         for (i=1; i<=count; i++) {
                 print "    server " massive_with_ip[i] ":" port " weight=1 max_fails=2 fail_timeout=30s;"
                                  }
         next
                  }
-{print}													# Если ни один паттерн не подошел, то просто перепечатываем строку не меняя ее.
-' balancer_template.conf > balancer_${jumpNode_name}.conf						# На вход скармливаем шаблон, на выходе файл с обработкой по паттернам.
+{print}
+' balancer_template.conf > balancer_${jumpNode_name}.conf
+chmod u+x balancer_${jumpNode_name}.conf
+sudo mv balancer_${jumpNode_name}.conf /etc/nginx/conf.d/balancer_${jumpNode_name}.conf
+sudo restorecon -v /etc/nginx/conf.d/balancer.conf 2> /dev/null
 
+nodes_ip_massive=()
+nodes_names_massive=()
+for item in $nodes_ip_without_jumpNode
+do
+	nodes_ip_massive+=("$item")
+done
 
-#sudo  mv /home/vagrant/Lab_1_nginx/ready_configs/balancer.conf /etc/nginx/conf.d/balancer.conf
-#sudo restorecon -v /etc/nginx/conf.d/balancer.conf
-#for ip in $active_nodes_ip_without_jumpNode          #Making ssh public key insert, nginx install, generate HTML page and send it  ---start---
-#do
+for item in $nodes_names_without_jumpNode
+do
+	nodes_names_massive+=("$item")
+done
+read -r -p "Введите номер порта (от 1 до 9999: )" jumpNode_port
+count=0
+for ip in $nodes_ip_without_jumpNode          #Making ssh public key insert, nginx install, generate HTML page and send it  ---start---
+do
+	
+	node_addr="vagrant@$ip"
+	sshpass -p "vagrant" \
+	ssh-copy-id -i ~/.ssh/id_rsa.pub -o \
+	StrictHostKeyChecking=no \
+	$node_addr
+	node_name=$(ssh $node_addr "hostname")
+	echo "nginx installing on "$node_name ", wait please..."
+	ssh $node_addr "sudo dnf install nginx -y" 2> /dev/null
+	sleep 2
+	ssh $node_addr "sudo systemctl enable nginx" 2> /dev/null
+	ssh $node_addr "sudo firewall-cmd --permanent --add-port=8080/tcp" 2> /dev/null              #SELinux setting
+	ssh $node_addr "sudo firewall-cmd --reload"                                    			 #SELinux setting
+	awk -v jumpNode_ip=$NODE_IP -v port=$jumpNode_port -v current_node_name="${nodes_names_without_jumpNode[count]}" \
+	' /__NODE_PORT__/ {
+	print ":" port
+	next
+			  }
+	/__JUMPNODE_IP__/ {
+	print jumpNode_ip
+	next
+			  }
+	/__DEFAULT_HTML_DIR_OF_NODE_NUMBER__/ {
+	print current_node_name "_html"
+	next
+					 }
+	/__DEFAULT_NODE_HTML_STATIC_FILE__/ {
+	print current_node_name ".html"
+	next
+					 }
 
-#       node_addr="vagrant@$ip"
-#       sshpass -p "vagrant"\
-#       ssh-copy-id -i ~/.ssh/.id_rsa.pub -o\
-#       StrictHostKeyChecking=no\
-#       $node_addr
-#       node_name=$(ssh $node_addr "hostname")
-#       echo "nginx installing on "$node_name ", wait please..."
-#       ssh $node_addr "sudo dnf install nginx -y"
-#       sleep 5
-#       ssh $node_addr "sudo systemctl enable nginx"
-#       ssh $node_addr "sudo firewall-cmd --permanent --add-port=8080/tcp"              #SELinux setting
-#       ssh $node_addr "sudo firewall-cmd --reload"                                     #SELinux setting
+	{print}
+
+	' node_template.conf > node_${current_node_name[i]}.conf
+	count+=1
+	chmod u+x node_${node_name}.conf
+	#scp /home/vagrant/Lab_1_nginx/node_${node_name}.conf $node_addr:/tmp/
+	#ssh $node_addr "sudo mv /tmp/node_${node_name}.conf /etc/nginx/conf.d/" 2> /dev/null
+	#ssh $node_addr "sudo restorecon -v /etc/nginx/conf.d/node_${node_name}.conf"    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	#ssh $node_addr "sudo chmod a+x /etc/nginx/conf.d/${node_name}_host.conf"
+	#ssh $node_addr "sudo systemctl restart nginx"
+	#rm node_${node_name}.conf
+
 #       echo "<!DOCTYPE html>
 #               <html>
 #               <head>
@@ -141,6 +206,13 @@ awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \			
 #       " > /home/vagrant/Lab_1_nginx/ready_configs/${node_name}_default.html                   # ---end---
 #
 #                                                       # ---start--- Making node config
+
+
+
+
+
+
+
 #       ssh $node_addr "sudo mkdir /usr/share/nginx/html/lab_1"
 #       ssh $node_addr "sudo chown vagrant:vagrant  /usr/share/nginx/html/lab_1"
 #       echo "server {
@@ -163,7 +235,7 @@ awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \			
 #       ssh $node_addr "sudo chmod a+x /etc/nginx/conf.d/${node_name}_host.conf"
 #       ssh $node_addr "sudo systemctl restart nginx"
 #
-#done                                                   # ---end---
+done                                                   # ---end---
 #sudo setsebool -P httpd_can_network_connect on                                         #SELinux setting
 #sudo systemctl restart nginx
 #echo "Testing nodes work from jumpNode, wait..."
