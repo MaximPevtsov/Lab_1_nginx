@@ -7,8 +7,8 @@ source /etc/vagrant-info.env
 
 		#------Включаем порт :80, потому что по дефолту он выключен в RHEL подобных дистрибутивах
 
-#sudo firewall-cmd --permanent --add-port=80/tcp                   #SELinux tcp :80 activated
-#sudo firewall-cmd --reload
+sudo firewall-cmd --permanent --add-port=80/tcp                   #SELinux tcp :80 activated
+sudo firewall-cmd --reload
 
 #mkdir /home/vagrant/Lab_1_nginx/ready_configs/
 
@@ -61,8 +61,9 @@ nodes_ip_without_jumpNode="${nodes_ip_without_jumpNode# }"
 jumpNode_ip="${NODE_IP}"
 jumpNode_name=$(hostname)
 nodes_count=$(echo $nodes_names_without_jumpNode | wc -w)
-echo "С каким портом должен работать бастион?"
-read -r -p "Введите номер порта (число от 0001 до 9999): " jumpNode_port
+#echo "С каким портом должен работать бастион?"
+#read -r -p "Введите номер порта (число от 0001 до 9999): " jumpNode_port
+jumpNode_port="8080"
 
 
 		#------Устанавливаем утилиту "sshpass"
@@ -87,7 +88,7 @@ sudo dnf install nginx -y 2> /dev/null
 		#------    (single quote) file_in > file_out
 		#------
 
-
+sudo chmod u+x balancer_template.conf
 awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \
 '/__ROUND_ROBIN_SERVERS__/ {
 	count = split (string_with_ip, massive_with_ip, " ")
@@ -111,7 +112,7 @@ awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \
 /__LEAST_CONN_SERVERS__/ {
 	count = split (string_with_ip, massive_with_ip, " ")
 	for (i=1; i<=count; i++) {
-		print "    server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"
+		print "    #server " massive_with_ip[i] ":" port " max_fails=2 fail_timeout=30s;"
 				 }
 	next
 		 }
@@ -119,7 +120,7 @@ awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \
 /__WEIGHT_BALANCE_SERVERS__/ {
         count = split (string_with_ip, massive_with_ip, " ")
         for (i=1; i<=count; i++) {
-                print "    server " massive_with_ip[i] ":" port " weight=1 max_fails=2 fail_timeout=30s;"
+                print "    #server " massive_with_ip[i] ":" port " weight=1 max_fails=2 fail_timeout=30s;"
                                  }
         next
                  }
@@ -127,7 +128,14 @@ awk -v string_with_ip="$nodes_ip_without_jumpNode" -v port="$jumpNode_port" \
 ' balancer_template.conf > balancer_${jumpNode_name}.conf
 chmod u+x balancer_${jumpNode_name}.conf
 sudo mv balancer_${jumpNode_name}.conf /etc/nginx/conf.d/balancer_${jumpNode_name}.conf
-sudo restorecon -v /etc/nginx/conf.d/balancer.conf 2> /dev/null
+sudo restorecon -v /etc/nginx/conf.d/balancer_${jumpNode_name}.conf 2> /dev/null
+
+
+		#------ Prepare to node_conf and HTML generating
+		#------
+		#------
+
+
 
 nodes_ip_massive=()
 nodes_names_massive=()
@@ -140,8 +148,17 @@ for item in $nodes_names_without_jumpNode
 do
 	nodes_names_massive+=("$item")
 done
-read -r -p "Введите номер порта (от 1 до 9999: )" jumpNode_port
-count=0
+
+		#------ node_conf generator
+		#------
+		#------
+		#------
+
+#read -r -p "Введите номер порта (от 1 до 9999: )" jumpNode_port
+count_conf=0
+count_html=0
+sudo chmod u+x node_template.conf
+sudo chmod u+x html_template.html
 for ip in $nodes_ip_without_jumpNode          #Making ssh public key insert, nginx install, generate HTML page and send it  ---start---
 do
 	
@@ -159,7 +176,7 @@ do
 	ssh $node_addr "sudo firewall-cmd --reload"                                    			 #SELinux setting
 	#echo ${nodes_names_without_jumpNode[count]}     "!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	sleep 2
-	awk -v jumpNode_ip=$NODE_IP -v port=$jumpNode_port -v current_node_name=${nodes_names_massive[count]} \
+	awk -v jumpNode_ip=$NODE_IP -v port=$jumpNode_port -v current_node_name=${nodes_names_massive[count_conf]} \
 	' /__NODE_PORT__/ {
 	print "        listen " port ";"
 	next
@@ -169,82 +186,82 @@ do
 	next
 			  }
 	/__DEFAULT_HTML_DIR_OF_NODE_NUMBER__/ {
-	print "        root /var/www/" current_node_name "_html"
+	print "        root /usr/share/nginx/html/" current_node_name "_html;"
 	next
 					 }
 	/__DEFAULT_NODE_HTML_STATIC_FILE__/ {
-	print "        index main_" current_node_name ".html"
+	print "        index " current_node_name "_default.html;"
 	next
 					 }
 
 	{print}
 
 	' node_template.conf > node_${node_name}.conf
-	count+=1
+	count_conf+=1
 	chmod u+x node_${node_name}.conf
-	#scp /home/vagrant/Lab_1_nginx/node_${node_name}.conf $node_addr:/tmp/
-	#ssh $node_addr "sudo mv /tmp/node_${node_name}.conf /etc/nginx/conf.d/" 2> /dev/null
-	#ssh $node_addr "sudo restorecon -v /etc/nginx/conf.d/node_${node_name}.conf"    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	#ssh $node_addr "sudo chmod a+x /etc/nginx/conf.d/${node_name}_host.conf"
-	#ssh $node_addr "sudo systemctl restart nginx"
-	#rm node_${node_name}.conf
-
-#       echo "<!DOCTYPE html>
-#               <html>
-#               <head>
-#               <title>Welcome to $node_name!</title>
-#               <style>
-#                   body {
-#                       width: 35em;
-#                       margin: 0 auto;
-#                       font-family: Tahoma, Verdana, Arial, sans-serif;
-#                   }
-#               </style>
-#               </head>
-#               <body>
-#               <h1>Active user and IP address - $node_addr</h1>
-#               <p>If you see this page, the nginx web server is successfully installed and
-#               working. Further configuration is required.</p>
-#       " > /home/vagrant/Lab_1_nginx/ready_configs/${node_name}_default.html                   # ---end---
-#
-#                                                       # ---start--- Making node config
+	scp /home/vagrant/Lab_1_nginx/node_${node_name}.conf $node_addr:/tmp/
+	ssh $node_addr "sudo mv /tmp/node_${node_name}.conf /etc/nginx/conf.d/" 2> /dev/null
+	ssh $node_addr "sudo restorecon -v /etc/nginx/conf.d/node_${node_name}.conf"    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	ssh $node_addr "sudo chmod u+x /etc/nginx/conf.d/node_${node_name}.conf"
+	ssh $node_addr "sudo systemctl restart nginx"
+	rm node_${node_name}.conf
 
 
+		#------ Until "HERE" the code is working in tests 11.11.20206 14:08
+
+		#------HTML generator
+		#------
+		#------
+
+
+	awk -v jumpNode_ip=$NODE_IP -v current_node_ip=${nodes_ip_massive[count_html]} -v current_node_name=${nodes_names_massive[count_html]} \
+        ' /__TITLE__/ {
+        print "    <title>Welcome to NODE " current_node_name "!</title>"
+        next
+                          }
+        /__NODE_IP__/ {
+        print "<h1>Node ip - " current_node_ip "</h1>"
+        next
+                          }
+        /__CONF_AND_HTML_INFO__/ {
+        print "<p>You can find nginx configuration in /etc/nginx/conf.d/node_" current_node_name ".conf</p>"
+	print "<p>Default static html-file in /usr/share/nginx/html/" current_node_name "_html/" current_node_name "_default.html</p>"
+        next
+                                         }
+        /__CONGRATS__/ {
+        print "<p class=\"status\">If u see this - proxy work correctly. Congratulations, comrad!</p>"
+        next
+                                         }
+
+        {print}
+
+        ' html_template.html > ${node_name}_default.html
+        count_html+=1
+        sudo chmod u+x ${node_name}_default.html
+
+                   # ---end---
 
 
 
-
-
-#       ssh $node_addr "sudo mkdir /usr/share/nginx/html/lab_1"
-#       ssh $node_addr "sudo chown vagrant:vagrant  /usr/share/nginx/html/lab_1"
-#       echo "server {
-#               listen     8080;
-#               server_name _;
-#               allow $jumpNode_ip;
-#               deny all;
-#
-#               location / {
-#                       root /usr/share/nginx/html/lab_1;
-#                       index ${node_name}_default.html;
-#               }
-#       }
-#" > /home/vagrant/Lab_1_nginx/ready_configs/${node_name}_host.conf
-#       scp /home/vagrant/Lab_1_nginx/ready_configs/${node_name}_default.html $node_addr:/usr/share/nginx/html/lab_1
-#       ssh $node_addr "sudo restorecon -Rv /usr/share/nginx/html/lab_1/"               #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	ssh $node_addr "sudo mkdir -p /usr/share/nginx/html/${node_name}_html"
+	ssh $node_addr "sudo chown vagrant:vagrant /usr/share/nginx/html/${node_name}_html"
+	scp /home/vagrant/Lab_1_nginx/${node_name}_default.html $node_addr:/usr/share/nginx/html/${node_name}_html/
+	ssh $node_addr "sudo restorecon -Rv /usr/share/nginx/html/${node_name}_html/"               #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	rm ${node_name}_default.html
 #       scp /home/vagrant/Lab_1_nginx/ready_configs/${node_name}_host.conf $node_addr:/tmp/
 #       ssh $node_addr "sudo mv /tmp/${node_name}_host.conf /etc/nginx/conf.d/"
 #       ssh $node_addr "sudo restorecon -v /etc/nginx/conf.d/${node_name}_host.conf"    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #       ssh $node_addr "sudo chmod a+x /etc/nginx/conf.d/${node_name}_host.conf"
-#       ssh $node_addr "sudo systemctl restart nginx"
+	ssh $node_addr "sudo systemctl restart nginx"
 #
 done                                                   # ---end---
-#sudo setsebool -P httpd_can_network_connect on                                         #SELinux setting
-#sudo systemctl restart nginx
+sudo setsebool -P httpd_can_network_connect on                                         #SELinux setting
+sudo systemctl restart nginx
 #echo "Testing nodes work from jumpNode, wait..."
 #sleep 5
 #for i in $active_nodes_ip_without_jumpNode
 #do
-#       curl $bastion_check:80
+#       curl $jumpNode_ip :80
 #       if [[ $? == 0 ]]
 #       then
 #               echo "ping of "$i" success!"
