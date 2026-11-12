@@ -26,7 +26,7 @@
 
 ## Требования
 
-- Rocky Linux / RHEL-подобная ОС.
+- Rocky Linux / RHEL-подобная ОС (SELinux, `firewall-cmd`, `dnf`).
 - Vagrant-стенд с несколькими VM в приватной сети.
 - Файл `/etc/vagrant-info.env` с переменными:
   - `ALL_NODES` — список `name=ip` через пробел;
@@ -42,6 +42,7 @@
 
 ```
 Lab_1_nginx/
+├── .gitignore
 ├── nginx_cluster.sh          # основной скрипт
 ├── balancer_template.conf    # шаблон конфига балансировщика
 ├── node_template.conf        # шаблон конфига ноды
@@ -51,7 +52,7 @@ Lab_1_nginx/
 
 ## Шаблоны: маркеры
 
-Во всех шаблонах на месте подстановки стоит **только маркер** — префиксы путей, `;` и прочее добавляет `awk` в `print`.
+Во всех шаблонах на месте подстановки стоит **только маркер**. Всё остальное — `;`, пути, директивы — добавляет `awk` в `print`, **заменяя всю строку с маркером**.
 
 ### balancer_template.conf
 
@@ -59,13 +60,17 @@ Lab_1_nginx/
 upstream round_robin {
     __ROUND_ROBIN_SERVERS__
 }
+```
 
+Если нужны `least_conn` и `weight` — **раскомментируйте блок целиком** (вместе с маркером **внутри** `{ ... }`):
+
+```nginx
 upstream least_conn {
     least_conn;
     __LEAST_CONN_SERVERS__
 }
 
-upstream weight {
+upstream weight_balance {
     __WEIGHT_BALANCE_SERVERS__
 }
 ```
@@ -74,19 +79,19 @@ upstream weight {
 
 ```nginx
 server {
-        listen __NODE_PORT__;
-        server_name _;
-        allow __JUMPNODE_IP__;
-        deny all;
+    __NODE_PORT__
+    server_name _;
+    __JUMPNODE_IP__
+    deny all;
 
-        location / {
-        root __DEFAULT_HTML_DIR_OF_NODE_NUMBER__
-        index __DEFAULT_NODE_HTML_STATIC_FILE__
-        }
+    location / {
+        __DEFAULT_HTML_DIR_OF_NODE_NUMBER__
+        __DEFAULT_NODE_HTML_STATIC_FILE__
+    }
 }
 ```
 
-> `root`/`index` собираются в awk: `root /usr/share/nginx/html/<name>_html;` и `index <name>_default.html;`.
+> `awk` **заменяет всю строку** с маркером: `__NODE_PORT__` → `listen 8080;`, `__JUMPNODE_IP__` → `allow <jumpNode_IP>;`, `__DEFAULT_HTML_DIR_OF_NODE_NUMBER__` → `root /usr/share/nginx/html/<name>_html;`, `__DEFAULT_NODE_HTML_STATIC_FILE__` → `index <name>_default.html;`. **`;`** — в `print`, **не** в шаблоне.
 
 ### html_template.html — маркеры
 
@@ -103,8 +108,8 @@ chmod +x nginx_cluster.sh
 ./nginx_cluster.sh
 ```
 
-Порт нод задан в скрипте: `NODES_DEFAULT_PORT="8080"`. Порт бастиона — из `balancer_template.conf` (`listen`).
-Внимание! При смене порта `NODES_DEFAULT_PORT` на другой, обязательно перенастройте SELinux разрешения на работу на этом порте!!!
+Порт нод задан в скрипте: `NODES_DEFAULT_PORT="8080"`. Порт бастиона — из `balancer_template.conf` (`listen 80 default_server`).
+Внимание! Если вы будете менять жестко прописанный `NODES_DEFAULT_PORT` на другой, то обязательно дайте доступ от SELinux новому порту, иначе nginx не запустится!
 
 ## Проверка результата
 
@@ -131,8 +136,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://<node_ip>:8080/
 
 Ожидается `200`.
 
-В браузере: открыть `http://<jumpNode_IP>:<jumpNode_port>/` — должна отдаваться статика нод через балансировщик.
-
+В браузере: открыть `http://<jumpNode_IP>:80/` — должна отдаваться статика нод через балансировщик.
 
 
 ## Безопасность / дисклеймер
