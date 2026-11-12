@@ -149,7 +149,8 @@ sleep 3
 sudo mv balancer_${jumpNode_name}.conf /etc/nginx/conf.d/balancer_${jumpNode_name}.conf
 sudo restorecon -v /etc/nginx/conf.d/balancer_${jumpNode_name}.conf > /dev/null 2>&1
 echo "config generated successfully!"
-		#------ Prepare to node_conf and HTML generating
+
+
 		#------ Готовим массивы айпи и имен нод.
 		#------ Сейчас они в строках, а нам нужны в виде массивов, чтобы обращаться к рандомным членам по индексу.
 
@@ -174,14 +175,14 @@ done
 		#------ 3. Ставим nginx, делаем enable, включаем порт 8080 на ноде для listen
 		#------ 4. Блок awk по аналогии выше формирует из шаблона node_template.conf по паттернам рабочий конфиг node_${node_name}.conf
 		#------ 5. Даем права, пересылаем в два этапа файл конфига на ноду ребутаем nginx
-		#------				---следующая нода---
+		#------				---далее---
 
 
 count_conf=0
 count_html=0
 sudo chmod u+x node_template.conf
 sudo chmod u+x html_template.html
-for ip in $nodes_ip_without_jumpNode          #Making ssh public key insert, nginx install, generate HTML page and send it  ---start---
+for ip in $nodes_ip_without_jumpNode
 do
 	node_addr="vagrant@$ip"
 	sshpass -p "vagrant" \
@@ -203,8 +204,8 @@ do
 	sleep 5
 	ssh $node_addr "sudo dnf install nginx -y" 2> /dev/null
 	ssh $node_addr "sudo systemctl enable nginx" 2> /dev/null
-	ssh $node_addr "sudo firewall-cmd --permanent --add-port=8080/tcp" > /dev/null 2>&1               #SELinux setting
-	ssh $node_addr "sudo firewall-cmd --reload"                        > /dev/null 2>&1            			 #SELinux setting
+	ssh $node_addr "sudo firewall-cmd --permanent --add-port=8080/tcp" > /dev/null 2>&1               		#SELinux setting
+	ssh $node_addr "sudo firewall-cmd --reload"                        > /dev/null 2>&1            			#SELinux setting
 	sleep 2
 	awk -v jumpNode_ip=$NODE_IP -v port=$NODES_DEFAULT_PORT -v current_node_name=${nodes_names_massive[count_conf]} \
 	' /__NODE_PORT__/ {
@@ -240,6 +241,7 @@ do
 	ssh $node_addr "sudo mv /tmp/node_${node_name}.conf /etc/nginx/conf.d/"
 	ssh $node_addr "sudo restorecon -v /etc/nginx/conf.d/node_${node_name}.conf > /dev/null 2>&1" 	  #SELinux
 	ssh $node_addr "sudo chmod u+x /etc/nginx/conf.d/node_${node_name}.conf"
+	rm /home/vagrant/Lab_1_nginx/node_${node_name}.conf
 	ssh $node_addr "sudo systemctl restart nginx"
 	echo "done!"
 
@@ -248,12 +250,9 @@ do
 		#------ HTML generator
 		#------ Генерируем с помощью awk готовую html страницу ${node_name}_default.html из шаблона html_template.html
 		#------ Все по аналогии выше, даем права нужные в конце
-		#------ 
-		#------
-		#------
-		#------
-		#------
-		#------
+		#------ Затем делаем директорию на ноде для статики нашей, даем .html файлу ноды нового владельца vagrant
+		#------ Отправляем из бастиона на ноду .html файл с помощью scp, делаем enable и reboot nginx
+		#------					---следующая нода---
 
 
 	echo ""
@@ -290,7 +289,6 @@ do
         sudo chmod u+x ${node_name}_default.html
 	echo "done!"
 	sleep 3
-                   # ---end---
 
 
 	echo ""
@@ -310,12 +308,19 @@ do
 	echo "done!"
 done
 
+		#------ Даем права на запуск конфига nginx
+		#------ Есди его не дать, то SE не даст запуститься nginx
+
 
 sudo setsebool -P httpd_can_network_connect on > /dev/null 2>&1                                         #SELinux setting
 sudo systemctl restart nginx
 
-		#------
-		#------
+		#------ Проверяем пинг из бастиона на порт 8080 каждой ноды
+		#------ Делаем запрос html страницы, отправляем само тело ее в /dev/null
+		#------ Оставляем только служебную инфу и смотрим с помощью grep, есть ли там код ответа 200
+		#------ Если есть, то request успешный и зеленым выведется успех
+		#------ Если что угодно, кроме 200, то красным неудача
+
 
 echo " "
 GREEN='\033[0;32m'
