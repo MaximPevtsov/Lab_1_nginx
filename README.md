@@ -102,6 +102,15 @@ server {
 
 ## Запуск
 
+Зайдите на любую ВМ, созданную в Vagrant под пользователем vagrant. Переместитесь в домашний каталог ~/ одной из своей ВМ, установите утилиту git и клонируйте репозиторий в домашний каталог
+
+```bash
+cd
+sudo dnf install git -y
+git clone https://github.com/MaximPevtsov/Lab_1_nginx.git
+```
+Перейдите в каталог проекта и запустите его
+
 ```bash
 cd ~/Lab_1_nginx
 chmod +x nginx_cluster.sh
